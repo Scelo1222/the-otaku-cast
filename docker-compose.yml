@@ -1,0 +1,12 @@
+version: '3.8'
+services:
+  otaku-cast-server:
+    build: ./server
+    container_name: otaku-cast-server
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./server/data:/app/server/data
+    environment:
+      - PORT=3000
+    restart: unless-stopped
