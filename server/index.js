@@ -30,6 +30,9 @@ function broadcast(event){
   });
 }
 
+// Health endpoint
+app.get('/api/health', (req, res)=>{ res.json({ ok: true }); });
+
 // --- Auth ---
 app.post('/api/login', (req, res)=>{
   const { username, password } = req.body || {};

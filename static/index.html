@@ -260,6 +260,7 @@
       // Backend API + WebSocket realtime
       const API_BASE = '';
       let socket;
+      let backendAvailable = false;
       // Legacy in-browser DB keys (unused in API mode)
       const DB_KEY = 'otaku_cast_sqlite_db';
       let SQL, db;
@@ -268,18 +269,85 @@
       function u8FromB64(b64){ const bin=atob(b64); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); return u8; }
       function b64FromU8(u8){ let bin=''; for(let i=0;i<u8.length;i++) bin += String.fromCharCode(u8[i]); return btoa(bin); }
 
-      async function initDb(){ /* no-op when using backend */ }
+      async function initDb(){
+        if(backendAvailable) return;
+        if(!SQL){ SQL = await initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${f}` }); }
+        const saved = localStorage.getItem(DB_KEY);
+        db = saved ? new SQL.Database(u8FromB64(saved)) : new SQL.Database();
+        createSchema();
+        seedDefaults();
+        persist();
+      }
 
       // HTTP helpers
-      async function apiGet(path){ const r = await fetch(API_BASE+path, { credentials:'same-origin' }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
-      async function apiPost(path, body){ const r = await fetch(API_BASE+path, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
-      async function apiDelete(path){ const r = await fetch(API_BASE+path, { method:'DELETE' }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+      async function apiGet(path){
+        if(backendAvailable){ const r = await fetch(API_BASE+path, { credentials:'same-origin' }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+        // Local mode shims
+        if(path === '/api/members') return all(`SELECT * FROM members ORDER BY name`);
+        if(path === '/api/suggestions') return all(`SELECT * FROM suggestions ORDER BY submittedAt DESC`);
+        if(path === '/api/meetings') return all(`SELECT * FROM meetings ORDER BY date ASC, time ASC`);
+        if(path === '/api/users') return all(`SELECT * FROM users ORDER BY displayName`);
+        throw new Error('Unknown GET path in local mode: '+path);
+      }
+      async function apiPost(path, body){
+        if(backendAvailable){ const r = await fetch(API_BASE+path, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+        // Local mode shims
+        if(path === '/api/login'){
+          const user = get('SELECT * FROM users WHERE username = ?', [body.username]);
+          if(user && user.password === body.password){ const { id, username, role, displayName, avatar } = user; return { id, username, role, displayName, avatar }; }
+          throw new Error('Invalid');
+        }
+        if(path === '/api/suggestions'){
+          const now = new Date().toISOString();
+          const id = `suggestion_${Date.now()}`;
+          run('INSERT INTO suggestions (id,animeName,genre,synopsis,reason,missionRank,submittedBy,submittedAt) VALUES (?,?,?,?,?,?,?,?)', [
+            id, body.animeName, body.genre, body.synopsis, body.reason, body.missionRank, body.submittedBy, now
+          ]);
+          persist();
+          broadcastLocal();
+          return { ok:true, id };
+        }
+        if(path === '/api/users'){
+          const id = body.id || `user_${body.username}`;
+          run('INSERT INTO users (id,username,password,role,displayName,avatar) VALUES (?,?,?,?,?,?)', [
+            id, body.username, body.password, body.role, body.displayName, (body.displayName||'U').charAt(0).toUpperCase()
+          ]);
+          persist();
+          broadcastLocal();
+          return { ok:true, id };
+        }
+        if(path === '/api/meetings'){
+          const id = body.id || `meeting_${Date.now()}`;
+          const createdAt = new Date().toISOString();
+          run('INSERT INTO meetings (id,date,time,duration,topic,focus,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?)', [
+            id, body.date, body.time, body.duration, body.topic, body.focus, body.createdBy, createdAt
+          ]);
+          persist();
+          broadcastLocal();
+          return { ok:true, id };
+        }
+        throw new Error('Unknown POST path in local mode: '+path);
+      }
+      async function apiDelete(path){
+        if(backendAvailable){ const r = await fetch(API_BASE+path, { method:'DELETE' }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+        // Local mode shims
+        if(path.startsWith('/api/suggestions/')){
+          const id = path.split('/').pop(); run('DELETE FROM suggestions WHERE id = ?', [id]); persist(); broadcastLocal(); return { ok:true };
+        }
+        if(path.startsWith('/api/users/')){
+          const id = path.split('/').pop(); run('DELETE FROM users WHERE id = ?', [id]); persist(); broadcastLocal(); return { ok:true };
+        }
+        if(path.startsWith('/api/meetings/')){
+          const id = path.split('/').pop(); run('DELETE FROM meetings WHERE id = ?', [id]); persist(); broadcastLocal(); return { ok:true };
+        }
+        throw new Error('Unknown DELETE path in local mode: '+path);
+      }
       // Admin-auth helpers (send role header for simple guard)
-      async function apiGetAuth(path){ const r = await fetch(API_BASE+path, { headers:{ 'x-role': (currentUser?.role)||'' } }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
-      async function apiPostAuth(path, body){ const r = await fetch(API_BASE+path, { method:'POST', headers:{ 'Content-Type':'application/json', 'x-role': (currentUser?.role)||'' }, body: JSON.stringify(body) }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
-      async function apiDeleteAuth(path){ const r = await fetch(API_BASE+path, { method:'DELETE', headers:{ 'x-role': (currentUser?.role)||'' } }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+      async function apiGetAuth(path){ if(backendAvailable){ const r = await fetch(API_BASE+path, { headers:{ 'x-role': (currentUser?.role)||'' } }); if(!r.ok) throw new Error(await r.text()); return r.json(); } return apiGet(path); }
+      async function apiPostAuth(path, body){ if(backendAvailable){ const r = await fetch(API_BASE+path, { method:'POST', headers:{ 'Content-Type':'application/json', 'x-role': (currentUser?.role)||'' }, body: JSON.stringify(body) }); if(!r.ok) throw new Error(await r.text()); return r.json(); } return apiPost(path, body); }
+      async function apiDeleteAuth(path){ if(backendAvailable){ const r = await fetch(API_BASE+path, { method:'DELETE', headers:{ 'x-role': (currentUser?.role)||'' } }); if(!r.ok) throw new Error(await r.text()); return r.json(); } return apiDelete(path); }
 
-      function persist(){ /* not needed with backend */ }
+      function persist(){ if(backendAvailable) return; const data = db.export(); localStorage.setItem(DB_KEY, b64FromU8(data)); }
 
       function reloadDbFromLocalStorage(){
         const saved = localStorage.getItem(DB_KEY);
@@ -301,24 +369,33 @@
         }
       }
 
+      function broadcastLocal(){ try{ if(bc){ bc.postMessage({ type:'db_changed', at: Date.now() }); } }catch{} }
+
       function setupRealtime(){
-        try{
-          const wsUrl = (location.origin.replace(/^http/,'ws'));
-          socket = new WebSocket(wsUrl);
-          socket.onmessage = (ev)=>{
-            try{
-              const msg = JSON.parse(ev.data);
-              if(msg && msg.type === 'db_changed'){
-                refreshViews();
-              }
-            }catch{}
-          };
-        }catch(e){ console.warn('WS unavailable', e); }
+        if(backendAvailable){
+          try{
+            const wsUrl = (location.origin.replace(/^http/,'ws'));
+            socket = new WebSocket(wsUrl);
+            socket.onmessage = (ev)=>{
+              try{
+                const msg = JSON.parse(ev.data);
+                if(msg && msg.type === 'db_changed'){
+                  refreshViews();
+                }
+              }catch{}
+            };
+          }catch(e){ console.warn('WS unavailable', e); }
+        } else {
+          // local mode cross-tab sync
+          try{ bc = new BroadcastChannel('otaku_cast_db'); }catch{}
+          if(bc){ bc.onmessage = (ev)=>{ if(ev && ev.data && ev.data.type === 'db_changed'){ reloadDbFromLocalStorage(); refreshViews(); } }; }
+          window.addEventListener('storage', (e)=>{ if(e.key === DB_KEY){ reloadDbFromLocalStorage(); refreshViews(); } });
+        }
       }
 
-      function createSchema(){ /* handled by backend */ }
+      function createSchema(){ if(backendAvailable) return; run(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, role TEXT NOT NULL, displayName TEXT NOT NULL, avatar TEXT NOT NULL);`); run(`CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL);`); run(`CREATE TABLE IF NOT EXISTS suggestions (id TEXT PRIMARY KEY, animeName TEXT NOT NULL, genre TEXT NOT NULL, synopsis TEXT NOT NULL, reason TEXT NOT NULL, missionRank TEXT NOT NULL, submittedBy TEXT NOT NULL, submittedAt TEXT NOT NULL);`); run(`CREATE TABLE IF NOT EXISTS meetings (id TEXT PRIMARY KEY, date TEXT NOT NULL, time TEXT NOT NULL, duration INTEGER NOT NULL, topic TEXT NOT NULL, focus TEXT NOT NULL, createdBy TEXT NOT NULL, createdAt TEXT NOT NULL);`); }
 
-      function seedDefaults(){ /* handled by backend */ }
+      function seedDefaults(){ if(backendAvailable) return; const countUsers = get('SELECT COUNT(*) as c FROM users')?.c || 0; if(countUsers === 0){ run('INSERT INTO users (id,username,password,role,displayName,avatar) VALUES (?,?,?,?,?,?)', ['user_admin','admin','admin123','admin','Constantine','C']); run('INSERT INTO users (id,username,password,role,displayName,avatar) VALUES (?,?,?,?,?,?)', ['user_twg','thewalkingghost','member123','admin','TheWalkingGhost','T']); } const countMembers = get('SELECT COUNT(*) as c FROM members')?.c || 0; if(countMembers === 0){ run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_1','Constantine','Administrator','present']); run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_2','TheWalkingGhost','Administrator','present']); run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_3','Sombra','Member','present']); run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_4','FatalDemon7 (Fatal)','Member','present']); run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_5','M.','Member','absent']); run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_6','SheWolf','Member','absent']); } const countMeet = get('SELECT COUNT(*) as c FROM meetings')?.c || 0; if(countMeet === 0){ run('INSERT INTO meetings (id,date,time,duration,topic,focus,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?)', ['meeting_1','2025-10-11','19:30',60,'Suggestion Box Event','Low-ranking missions initiation','System', new Date().toISOString()]); } }
 
       // Auth and UI
       let currentUser = null;
@@ -339,7 +416,16 @@
       const addUserForm = document.getElementById('addUserForm');
       const meetingForm = document.getElementById('meetingForm');
 
+      async function checkBackend(){
+        try{
+          const ctl = new AbortController(); const t = setTimeout(()=>ctl.abort(), 1500);
+          const r = await fetch('api/health', { signal: ctl.signal }); clearTimeout(t);
+          backendAvailable = r.ok;
+        }catch{ backendAvailable = false; }
+      }
+
       document.addEventListener('DOMContentLoaded', async () => {
+        await checkBackend();
         await initDb();
         setupRealtime();
         const savedUser = localStorage.getItem('currentUser');
