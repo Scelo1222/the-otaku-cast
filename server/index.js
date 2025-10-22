@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import { all, get, run } from './db.js';
+import bcrypt from 'bcryptjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,12 +35,19 @@ app.post('/api/login', (req, res)=>{
   const { username, password } = req.body || {};
   if(!username || !password) return res.status(400).json({ error: 'Missing credentials' });
   const user = get('SELECT * FROM users WHERE username = ?', [username]);
-  if(user && user.password === password){
+  if(user && bcrypt.compareSync(password, user.password)){
     const { id, role, displayName, avatar } = user;
     return res.json({ id, username, role, displayName, avatar });
   }
   return res.status(401).json({ error: 'Invalid username or password' });
 });
+
+// Simple admin guard via header
+function adminOnly(req, res, next){
+  const role = (req.headers['x-role'] || '').toString();
+  if(role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  next();
+}
 
 // --- Members ---
 app.get('/api/members', (req, res)=>{
@@ -72,12 +80,12 @@ app.delete('/api/suggestions/:id', (req, res)=>{
 });
 
 // --- Users (admin) ---
-app.get('/api/users', (req, res)=>{
+app.get('/api/users', adminOnly, (req, res)=>{
   const rows = all('SELECT * FROM users ORDER BY displayName');
   res.json(rows);
 });
 
-app.post('/api/users', (req, res)=>{
+app.post('/api/users', adminOnly, (req, res)=>{
   const u = req.body || {};
   if(!u.id){ u.id = `user_${u.username}`; }
   try{
@@ -89,7 +97,7 @@ app.post('/api/users', (req, res)=>{
   }catch(err){ console.error(err); res.status(400).json({ error: 'Failed to add user' }); }
 });
 
-app.delete('/api/users/:id', (req, res)=>{
+app.delete('/api/users/:id', adminOnly, (req, res)=>{
   try{ run('DELETE FROM users WHERE id = ?', [req.params.id]); broadcast({ type:'db_changed', resource:'users' }); res.json({ ok:true }); }
   catch(err){ console.error(err); res.status(400).json({ error: 'Failed to delete user' }); }
 });
