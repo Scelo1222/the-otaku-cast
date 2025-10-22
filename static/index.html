@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Otaku Cast - Portal</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+    <style>
+        :root { --primary-color:#4a148c; --secondary-color:#7b1fa2; --accent-color:#e91e63; --light-color:#f3e5f5; --dark-color:#12005e; --text-color:#212121; --light-text:#f5f5f5; --success-color:#4caf50; --warning-color:#ff9800; --error-color:#f44336; }
+        *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}
+        body{background-color:#f5f5f5;color:var(--text-color);line-height:1.6}
+        header{background:linear-gradient(135deg,var(--primary-color),var(--secondary-color));color:var(--light-text);padding:1.5rem;text-align:center;box-shadow:0 4px 6px rgba(0,0,0,.1);position:relative}
+        .logo{font-size:2.5rem;font-weight:bold;margin-bottom:.5rem;text-shadow:2px 2px 4px rgba(0,0,0,.3)}.tagline{font-style:italic;margin-bottom:1rem}
+        .user-controls{position:absolute;top:1rem;right:1rem;display:flex;align-items:center;gap:1rem}
+        .user-info{display:flex;align-items:center;gap:.5rem}
+        .avatar{width:40px;height:40px;border-radius:50%;background-color:var(--accent-color);display:flex;align-items:center;justify-content:center;font-weight:bold;color:#fff}
+        nav{background-color:var(--dark-color);padding:.5rem}
+        nav ul{display:flex;justify-content:center;list-style:none;flex-wrap:wrap}
+        nav li{margin:0 1rem}
+        nav a{color:var(--light-text);text-decoration:none;padding:.5rem 1rem;border-radius:4px;transition:background-color .3s}
+        nav a:hover{background-color:var(--secondary-color)}
+        .container{max-width:1200px;margin:2rem auto;padding:0 1rem}
+        .section{background-color:#fff;border-radius:8px;padding:2rem;margin-bottom:2rem;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+        .section-title{color:var(--primary-color);border-bottom:2px solid var(--light-color);padding-bottom:.5rem;margin-bottom:1.5rem}
+        .card-container{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.5rem;margin-top:1.5rem}
+        .card{background-color:var(--light-color);border-radius:8px;padding:1.5rem;transition:transform .3s,box-shadow .3s}
+        .card:hover{transform:translateY(-5px);box-shadow:0 6px 12px rgba(0,0,0,.1)}
+        .card-title{color:var(--secondary-color);margin-bottom:1rem}
+        .mission-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:1.5rem;margin-top:1.5rem}
+        .mission-card{background-color:#fff;border-left:4px solid var(--accent-color);border-radius:4px;padding:1.5rem;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+        .mission-rank{font-weight:bold;margin-bottom:.5rem}
+        .low-rank{border-left-color:var(--success-color)}.intermediate-rank{border-left-color:var(--warning-color)}.high-rank{border-left-color:var(--error-color)}
+        .members-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem;margin-top:1.5rem}
+        .member-card{background-color:var(--light-color);border-radius:8px;padding:1rem;text-align:center}
+        .admin{border:2px solid var(--accent-color)}.vice-admin{border:2px solid var(--secondary-color)}
+        .meeting-info{background-color:var(--light-color);border-radius:8px;padding:1.5rem;margin-top:1.5rem}
+        .meeting-details{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:1rem;margin-top:1rem}
+        .suggestion-form,.login-form,.admin-panel{background-color:var(--light-color);border-radius:8px;padding:1.5rem;margin-top:1.5rem}
+        .form-group{margin-bottom:1rem}
+        label{display:block;margin-bottom:.5rem;font-weight:bold}
+        input,select,textarea{width:100%;padding:.75rem;border:1px solid #ddd;border-radius:4px;font-size:1rem}
+        button{background-color:var(--secondary-color);color:#fff;border:none;padding:.75rem 1.5rem;border-radius:4px;cursor:pointer;font-size:1rem;transition:background-color .3s}
+        button:hover{background-color:var(--primary-color)}
+        .btn-danger{background-color:var(--error-color)}.btn-success{background-color:var(--success-color)}.btn-warning{background-color:var(--warning-color)}
+        footer{background-color:var(--dark-color);color:var(--light-text);text-align:center;padding:1.5rem;margin-top:2rem}
+        .tabs{display:flex;border-bottom:1px solid #ddd;margin-bottom:1rem}
+        .tab{padding:.75rem 1.5rem;cursor:pointer;border-bottom:3px solid transparent}
+        .tab.active{border-bottom:3px solid var(--accent-color);font-weight:bold}
+        .tab-content{display:none}
+        .tab-content.active{display:block}
+        .suggestions-list{margin-top:1.5rem}
+        .suggestion-item{background-color:#fff;border-radius:8px;padding:1rem;margin-bottom:1rem;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+        .suggestion-header{display:flex;justify-content:space-between;margin-bottom:.5rem}
+        .suggestion-title{font-weight:bold;color:var(--primary-color)}
+        .suggestion-meta{font-size:.9rem;color:#666}
+        .login-container{max-width:400px;margin:2rem auto;padding:2rem;background-color:#fff;border-radius:8px;box-shadow:0 4px 8px rgba(0,0,0,.1)}
+        .login-title{text-align:center;margin-bottom:1.5rem;color:var(--primary-color)}
+        .hidden{display:none}
+        .notification{position:fixed;top:1rem;right:1rem;padding:1rem;border-radius:4px;color:#fff;z-index:1000;box-shadow:0 2px 4px rgba(0,0,0,.2)}
+        .notification.success{background-color:var(--success-color)}.notification.error{background-color:var(--error-color)}.notification.warning{background-color:var(--warning-color)}
+        @media (max-width:768px){nav ul{flex-direction:column;align-items:center}nav li{margin:.25rem 0}.card-container,.mission-grid,.members-list{grid-template-columns:1fr}.user-controls{position:static;justify-content:center;margin-top:1rem}}
+    </style>
+  </head>
+  <body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-container">
+      <h2 class="login-title">The Otaku Cast Portal</h2>
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="username">Username:</label>
+          <input type="text" id="username" required>
+        </div>
+        <div class="form-group">
+          <label for="password">Password:</label>
+          <input type="password" id="password" required>
+        </div>
+        <button type="submit" style="width: 100%;">Login</button>
+      </form>
+    </div>
+
+    <!-- Main Portal (hidden until login) -->
+    <div id="mainPortal" class="hidden">
+      <header>
+        <div class="logo">THE OTAKU CAST</div>
+        <div class="tagline">Where Otakus convene to discuss all matters anime and comics</div>
+        <div class="user-controls">
+          <div class="user-info">
+            <div class="avatar" id="userAvatar">U</div>
+            <span id="userName">User</span>
+          </div>
+          <button id="logoutBtn">Logout</button>
+        </div>
+      </header>
+
+      <nav>
+        <ul>
+          <li><a href="#foundation">Foundation</a></li>
+          <li><a href="#rules">Rules</a></li>
+          <li><a href="#events">Events</a></li>
+          <li><a href="#members">Members</a></li>
+          <li><a href="#missions">Missions</a></li>
+          <li><a href="#suggestions">Suggestions</a></li>
+          <li><a href="#admin" id="adminNav" class="hidden">Admin</a></li>
+        </ul>
+      </nav>
+
+      <div class="container">
+        <section id="foundation" class="section">
+          <h2 class="section-title">Foundation & Purpose</h2>
+          <p>The Otaku Cast is built with the sole purpose of purely debating about anime and comics matters. It serves as a sanctuary for each individual to never shun their Otaku parts, creating a comfortable environment free of judgment, prejudice, and disorder.</p>
+          <div class="card-container">
+            <div class="card"><h3 class="card-title">Our Mission</h3><p>To expand on the knowledge that can be gathered in anime and comic discussions while fostering analytical and debating skills.</p></div>
+            <div class="card"><h3 class="card-title">Our Vision</h3><p>To create a safe refuge where members can indulge in their Otaku hobbies without concerns, while growing individually and as a group.</p></div>
+            <div class="card"><h3 class="card-title">Our Values</h3><p>Respect, flexibility, trust, and loyalty to the Otaku culture while maintaining order and a comfortable environment for all.</p></div>
+          </div>
+        </section>
+
+        <section id="rules" class="section">
+          <h2 class="section-title">Rules & Regulations</h2>
+          <div class="card-container">
+            <div class="card"><h3 class="card-title">Respect is Earned, Respect is a Must-Have</h3><p>We remain within boundaries of personal spaces and do not insult our own or outsiders. Respect is fundamental to being human.</p></div>
+            <div class="card"><h3 class="card-title">Participation is Optional</h3><p>Members are not forced to participate in discussions. However, when joining, contribute meaningfully to enrich minds with knowledge.</p></div>
+            <div class="card"><h3 class="card-title">No Spoilers Policy</h3><p>Spoiling shows for others is strictly prohibited. Always confirm if others are up to speed before discussing recent developments.</p></div>
+            <div class="card"><h3 class="card-title">Have Fun!</h3><p>While rules are important, the ultimate goal is to have fun and enjoy our shared passion for anime and comics.</p></div>
+          </div>
+        </section>
+
+        <section id="events" class="section">
+          <h2 class="section-title">Events & Activities</h2>
+          <div class="card-container">
+            <div class="card"><h3 class="card-title">Weekly Events</h3><p>Each week, members convene online to provide suggestions for fresh anime to watch, followed by substantial reasons for their choices.</p></div>
+            <div class="card"><h3 class="card-title">Monthly Events</h3><p>Four suggested ideas from the previous month are discussed in a series of debates, allowing for deeper analysis and discussion.</p></div>
+            <div class="card"><h3 class="card-title">Annual Celebration</h3><p>A celebration of completed quests throughout the year, with possible in-person meetings to socialize and strengthen bonds.</p></div>
+          </div>
+          <div class="meeting-info">
+            <h3>Next Meeting Details</h3>
+            <div class="meeting-details">
+              <div><strong>Date:</strong> October 11, 2025 (Wednesday)</div>
+              <div><strong>Time:</strong> 7:30 - 8:30 PM</div>
+              <div><strong>Focus:</strong> Suggestion Box Event & Low-Ranking Missions</div>
+            </div>
+          </div>
+        </section>
+
+        <section id="members" class="section">
+          <h2 class="section-title">Members & Leadership</h2>
+          <div class="members-list" id="membersList"></div>
+        </section>
+
+        <section id="missions" class="section">
+          <h2 class="section-title">Mission System</h2>
+          <div class="mission-grid">
+            <div class="mission-card low-rank"><div class="mission-rank">Low Rank/Difficulty</div><p>New generation anime with simpler plots, minimal world-building, and often lacking follow-up seasons. Perfect for testing group dynamics and fundamental skills.</p><p><strong>Requirements:</strong> 1 season (12-13 episodes), predictable plot, easily discerned themes.</p></div>
+            <div class="mission-card intermediate-rank"><div class="mission-rank">Intermediate Rank/Difficulty</div><p>Above-average missions with decent influence in the anime community. Helps understand fundamental structures for high-difficulty missions.</p><p><strong>Examples:</strong> Naruto, Gintama, Bleach</p></div>
+            <div class="mission-card high-rank"><div class="mission-rank">High Rank/Difficulty</div><p>Exceptionally detailed anime with distinct storytelling that captures hearts of the community. Requires significant time investment but offers great rewards.</p><p><strong>Examples:</strong> Dragon Ball Z, Attack on Titan</p></div>
+          </div>
+          <h3 style="margin-top: 2rem;">Individual Ranking System</h3>
+          <div class="card-container">
+            <div class="card"><h3 class="card-title">Low Rank</h3><p>To advance: Complete 10 intermediate missions + 20 individual/team matches</p></div>
+            <div class="card"><h3 class="card-title">Intermediate Rank</h3><p>To advance: Complete 15 high-difficulty missions + 30 individual/team matches</p></div>
+            <div class="card"><h3 class="card-title">High Difficulty Rank</h3><p>Elite members who can complete missions with little trouble. Their rank can be challenged by qualified lower-ranked members.</p></div>
+          </div>
+        </section>
+
+        <section id="suggestions" class="section">
+          <h2 class="section-title">Suggestion Box</h2>
+          <div class="suggestion-form">
+            <h3>Submit Anime Suggestion</h3>
+            <form id="suggestionForm">
+              <div class="form-group"><label for="animeName">Anime Name:</label><input type="text" id="animeName" required></div>
+              <div class="form-group"><label for="genre">Genre:</label>
+                <select id="genre" required>
+                  <option value="">Select Genre</option>
+                  <option value="action">Action</option>
+                  <option value="fantasy">Fantasy</option>
+                  <option value="romance">Romance</option>
+                  <option value="sci-fi">Sci-Fi</option>
+                  <option value="comedy">Comedy</option>
+                  <option value="drama">Drama</option>
+                  <option value="mystery">Mystery</option>
+                  <option value="horror">Horror</option>
+                  <option value="slice-of-life">Slice of Life</option>
+                </select>
+              </div>
+              <div class="form-group"><label for="synopsis">Synopsis:</label><textarea id="synopsis" rows="3" required></textarea></div>
+              <div class="form-group"><label for="reason">Why We Should Watch It:</label><textarea id="reason" rows="3" required></textarea></div>
+              <div class="form-group"><label for="missionRank">Suggested Mission Rank:</label>
+                <select id="missionRank" required>
+                  <option value="">Select Rank</option>
+                  <option value="low">Low</option>
+                  <option value="intermediate">Intermediate</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+              <button type="submit">Submit Suggestion</button>
+            </form>
+          </div>
+          <div class="suggestions-list">
+            <h3>Recent Suggestions</h3>
+            <div id="suggestionsList"></div>
+          </div>
+        </section>
+
+        <section id="admin" class="section hidden">
+          <h2 class="section-title">Admin Panel</h2>
+          <div class="tabs">
+            <div class="tab active" data-tab="users">Manage Users</div>
+            <div class="tab" data-tab="suggestions">Manage Suggestions</div>
+            <div class="tab" data-tab="meetings">Manage Meetings</div>
+          </div>
+          <div class="tab-content active" id="users-tab">
+            <h3>User Management</h3>
+            <div class="card-container" id="adminUsersList"></div>
+            <div class="suggestion-form">
+              <h3>Add New User</h3>
+              <form id="addUserForm">
+                <div class="form-group"><label for="newUsername">Username:</label><input type="text" id="newUsername" required></div>
+                <div class="form-group"><label for="newPassword">Password:</label><input type="password" id="newPassword" required></div>
+                <div class="form-group"><label for="newRole">Role:</label>
+                  <select id="newRole" required>
+                    <option value="member">Member</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div class="form-group"><label for="newDisplayName">Display Name:</label><input type="text" id="newDisplayName" required></div>
+                <button type="submit">Add User</button>
+              </form>
+            </div>
+          </div>
+          <div class="tab-content" id="suggestions-tab">
+            <h3>Suggestion Management</h3>
+            <div id="adminSuggestionsList"></div>
+          </div>
+          <div class="tab-content" id="meetings-tab">
+            <h3>Meeting Management</h3>
+            <div class="suggestion-form">
+              <form id="meetingForm">
+                <div class="form-group"><label for="meetingDate">Meeting Date:</label><input type="date" id="meetingDate" required></div>
+                <div class="form-group"><label for="meetingTime">Meeting Time:</label><input type="time" id="meetingTime" required></div>
+                <div class="form-group"><label for="meetingDuration">Duration (minutes):</label><input type="number" id="meetingDuration" required></div>
+                <div class="form-group"><label for="meetingTopic">Meeting Topic:</label><input type="text" id="meetingTopic" required></div>
+                <div class="form-group"><label for="meetingFocus">Focus:</label><textarea id="meetingFocus" rows="3" required></textarea></div>
+                <button type="submit">Schedule Meeting</button>
+              </form>
+            </div>
+            <div class="suggestions-list">
+              <h3>Upcoming Meetings</h3>
+              <div id="meetingsList"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+      <footer>
+        <p>&copy; 2025 The Otaku Cast. All rights reserved.</p>
+        <p>This portal is for local use by group members only.</p>
+      </footer>
+    </div>
+
+    <script>
+      // In-browser SQLite using sql.js, persisted in localStorage
+      const DB_KEY = 'otaku_cast_sqlite_db';
+      let SQL, db;
+
+      function u8FromB64(b64){ const bin=atob(b64); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); return u8; }
+      function b64FromU8(u8){ let bin=''; for(let i=0;i<u8.length;i++) bin += String.fromCharCode(u8[i]); return btoa(bin); }
+
+      async function initDb(){
+        if(!SQL){ SQL = await initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${f}` }); }
+        const saved = localStorage.getItem(DB_KEY);
+        db = saved ? new SQL.Database(u8FromB64(saved)) : new SQL.Database();
+        createSchema();
+        seedDefaults();
+        persist();
+      }
+
+      function run(sql, params=[]){ const stmt = db.prepare(sql); stmt.run(params); stmt.free(); }
+      function all(sql, params=[]){ const res = db.exec(sql, params); if(res.length===0) return []; const { columns, values } = res[0]; return values.map(row => Object.fromEntries(row.map((v,i)=>[columns[i], v]))); }
+      function get(sql, params=[]){ const rows = all(sql, params); return rows[0] || null; }
+      function persist(){ const data = db.export(); localStorage.setItem(DB_KEY, b64FromU8(data)); }
+
+      function createSchema(){
+        run(`CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          username TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          role TEXT NOT NULL,
+          displayName TEXT NOT NULL,
+          avatar TEXT NOT NULL
+        );`);
+        run(`CREATE TABLE IF NOT EXISTS members (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          role TEXT NOT NULL,
+          status TEXT NOT NULL
+        );`);
+        run(`CREATE TABLE IF NOT EXISTS suggestions (
+          id TEXT PRIMARY KEY,
+          animeName TEXT NOT NULL,
+          genre TEXT NOT NULL,
+          synopsis TEXT NOT NULL,
+          reason TEXT NOT NULL,
+          missionRank TEXT NOT NULL,
+          submittedBy TEXT NOT NULL,
+          submittedAt TEXT NOT NULL
+        );`);
+        run(`CREATE TABLE IF NOT EXISTS meetings (
+          id TEXT PRIMARY KEY,
+          date TEXT NOT NULL,
+          time TEXT NOT NULL,
+          duration INTEGER NOT NULL,
+          topic TEXT NOT NULL,
+          focus TEXT NOT NULL,
+          createdBy TEXT NOT NULL,
+          createdAt TEXT NOT NULL
+        );`);
+      }
+
+      function seedDefaults(){
+        // Seed only if empty
+        const countUsers = get('SELECT COUNT(*) as c FROM users').c || 0;
+        if(countUsers === 0){
+          run('INSERT INTO users (id,username,password,role,displayName,avatar) VALUES (?,?,?,?,?,?)', ['user_admin','admin','admin123','admin','Constantine','C']);
+          // Make TheWalkingGhost an admin account
+          run('INSERT INTO users (id,username,password,role,displayName,avatar) VALUES (?,?,?,?,?,?)', ['user_twg','thewalkingghost','member123','admin','TheWalkingGhost','T']);
+        }
+
+        const countMembers = get('SELECT COUNT(*) as c FROM members').c || 0;
+        if(countMembers === 0){
+          run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_1','Constantine','Administrator','present']);
+          run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_2','TheWalkingGhost','Administrator','present']);
+          run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_3','Sombra','Member','present']);
+          run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_4','FatalDemon7 (Fatal)','Member','present']);
+          run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_5','M.','Member','absent']);
+          run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_6','SheWolf','Member','absent']);
+        }
+
+        const countMeet = get('SELECT COUNT(*) as c FROM meetings').c || 0;
+        if(countMeet === 0){
+          run('INSERT INTO meetings (id,date,time,duration,topic,focus,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?)', [
+            'meeting_1','2025-10-11','19:30',60,'Suggestion Box Event','Low-ranking missions initiation','System', new Date().toISOString()
+          ]);
+        }
+      }
+
+      // Auth and UI
+      let currentUser = null;
+      const loginScreen = document.getElementById('loginScreen');
+      const mainPortal = document.getElementById('mainPortal');
+      const loginForm = document.getElementById('loginForm');
+      const logoutBtn = document.getElementById('logoutBtn');
+      const userName = document.getElementById('userName');
+      const userAvatar = document.getElementById('userAvatar');
+      const adminNav = document.getElementById('adminNav');
+      const adminSection = document.getElementById('admin');
+      const membersList = document.getElementById('membersList');
+      const suggestionsList = document.getElementById('suggestionsList');
+      const suggestionForm = document.getElementById('suggestionForm');
+      const adminUsersList = document.getElementById('adminUsersList');
+      const adminSuggestionsList = document.getElementById('adminSuggestionsList');
+      const meetingsList = document.getElementById('meetingsList');
+      const addUserForm = document.getElementById('addUserForm');
+      const meetingForm = document.getElementById('meetingForm');
+
+      document.addEventListener('DOMContentLoaded', async () => {
+        await initDb();
+        const savedUser = localStorage.getItem('currentUser');
+        if(savedUser){ currentUser = JSON.parse(savedUser); showMainPortal(); }
+        setupEvents();
+      });
+
+      function setupEvents(){
+        loginForm.addEventListener('submit', handleLogin);
+        logoutBtn.addEventListener('click', handleLogout);
+        suggestionForm.addEventListener('submit', handleSuggestionSubmit);
+        if(addUserForm) addUserForm.addEventListener('submit', handleAddUser);
+        if(meetingForm) meetingForm.addEventListener('submit', handleMeetingSubmit);
+        document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>switchTab(tab.getAttribute('data-tab'))));
+        document.querySelectorAll('nav a').forEach(a=>a.addEventListener('click', (e)=>{
+          e.preventDefault(); const id = a.getAttribute('href'); const el = document.querySelector(id); if(el){ window.scrollTo({ top: el.offsetTop-20, behavior:'smooth' }); }
+        }));
+      }
+
+      function handleLogin(e){
+        e.preventDefault();
+        const u = document.getElementById('username').value.trim();
+        const p = document.getElementById('password').value;
+        const user = get('SELECT * FROM users WHERE username = ?', [u]);
+        if(user && user.password === p){
+          currentUser = { id:user.id, username:user.username, role:user.role, displayName:user.displayName, avatar:user.avatar };
+          localStorage.setItem('currentUser', JSON.stringify(currentUser));
+          showMainPortal();
+          showNotification('Login successful!','success');
+        } else {
+          showNotification('Invalid username or password','error');
+        }
+      }
+
+      function handleLogout(){ currentUser=null; localStorage.removeItem('currentUser'); showLoginScreen(); showNotification('Logged out successfully','success'); }
+      function showLoginScreen(){ loginScreen.classList.remove('hidden'); mainPortal.classList.add('hidden'); loginForm.reset(); }
+      function showMainPortal(){
+        loginScreen.classList.add('hidden'); mainPortal.classList.remove('hidden');
+        userName.textContent = currentUser.displayName; userAvatar.textContent = currentUser.avatar;
+        if(currentUser.role === 'admin'){ adminNav.classList.remove('hidden'); adminSection.classList.remove('hidden'); } else { adminNav.classList.add('hidden'); adminSection.classList.add('hidden'); }
+        loadMembers(); loadSuggestions(); if(currentUser.role==='admin'){ loadAdminUsers(); loadAdminSuggestions(); loadMeetings(); }
+      }
+
+      function loadMembers(){
+        const rows = all('SELECT * FROM members ORDER BY name');
+        membersList.innerHTML = '';
+        rows.forEach(m=>{
+          const div = document.createElement('div');
+          const cls = m.role.includes('Admin')? (m.role.includes('Vice')? 'vice-admin':'admin') : '';
+          div.className = `member-card ${cls}`;
+          div.innerHTML = `<h3>${m.name}</h3><p>${m.role}</p><p><strong>Status:</strong> ${m.status}</p>`;
+          membersList.appendChild(div);
+        });
+      }
+
+      function loadSuggestions(){
+        const rows = all('SELECT * FROM suggestions ORDER BY submittedAt DESC');
+        suggestionsList.innerHTML = rows.length? '' : '<p>No suggestions yet. Be the first to suggest an anime!</p>';
+        rows.forEach(s=>{
+          const div = document.createElement('div');
+          div.className = 'suggestion-item';
+          div.innerHTML = `
+            <div class="suggestion-header"><div class="suggestion-title">${escapeHtml(s.animeName)}</div><div class="suggestion-meta">${escapeHtml(s.genre)} • ${escapeHtml(s.missionRank)} rank</div></div>
+            <p><strong>Synopsis:</strong> ${escapeHtml(s.synopsis)}</p>
+            <p><strong>Reason:</strong> ${escapeHtml(s.reason)}</p>
+            <p><strong>Suggested by:</strong> ${escapeHtml(s.submittedBy)}</p>`;
+          suggestionsList.appendChild(div);
+        });
+      }
+
+      function handleSuggestionSubmit(e){
+        e.preventDefault(); if(!currentUser) return;
+        const now = new Date().toISOString();
+        const row = {
+          id: `suggestion_${Date.now()}`,
+          animeName: document.getElementById('animeName').value.trim(),
+          genre: document.getElementById('genre').value,
+          synopsis: document.getElementById('synopsis').value.trim(),
+          reason: document.getElementById('reason').value.trim(),
+          missionRank: document.getElementById('missionRank').value,
+          submittedBy: currentUser.displayName,
+          submittedAt: now
+        };
+        run('INSERT INTO suggestions (id,animeName,genre,synopsis,reason,missionRank,submittedBy,submittedAt) VALUES (?,?,?,?,?,?,?,?)', Object.values(row));
+        persist();
+        e.target.reset();
+        loadSuggestions();
+        if(currentUser.role==='admin'){ loadAdminSuggestions(); }
+        showNotification('Suggestion submitted successfully!','success');
+      }
+
+      function loadAdminUsers(){
+        const rows = all('SELECT * FROM users ORDER BY displayName');
+        adminUsersList.innerHTML = '';
+        rows.forEach(u=>{
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = `
+            <h3 class="card-title">${escapeHtml(u.displayName)}</h3>
+            <p><strong>Username:</strong> ${escapeHtml(u.username)}</p>
+            <p><strong>Role:</strong> ${escapeHtml(u.role)}</p>
+            <button class="btn-danger" data-del-user="${u.id}">Delete</button>`;
+          adminUsersList.appendChild(card);
+        });
+        adminUsersList.querySelectorAll('[data-del-user]').forEach(btn=>btn.addEventListener('click', ()=>deleteUser(btn.getAttribute('data-del-user'))));
+      }
+
+      function handleAddUser(e){
+        e.preventDefault();
+        const username = document.getElementById('newUsername').value.trim();
+        const password = document.getElementById('newPassword').value;
+        const role = document.getElementById('newRole').value;
+        const displayName = document.getElementById('newDisplayName').value.trim();
+        if(!username || !displayName) return;
+        try{
+          run('INSERT INTO users (id,username,password,role,displayName,avatar) VALUES (?,?,?,?,?,?)', [
+            `user_${username}`, username, password, role, displayName, displayName.charAt(0).toUpperCase()
+          ]);
+          persist(); addUserForm.reset(); loadAdminUsers(); showNotification('User added successfully!','success');
+        }catch(err){ console.error(err); showNotification('Error adding user','error'); }
+      }
+
+      function deleteUser(id){
+        if(!confirm('Are you sure you want to delete this user?')) return;
+        try{ run('DELETE FROM users WHERE id = ?', [id]); persist(); loadAdminUsers(); showNotification('User deleted successfully','success'); }catch(err){ console.error(err); showNotification('Error deleting user','error'); }
+      }
+
+      function loadAdminSuggestions(){
+        const rows = all('SELECT * FROM suggestions ORDER BY submittedAt DESC');
+        adminSuggestionsList.innerHTML = '';
+        if(rows.length===0){ adminSuggestionsList.innerHTML = '<p>No suggestions yet.</p>'; return; }
+        rows.forEach(s=>{
+          const div = document.createElement('div');
+          div.className = 'suggestion-item';
+          div.innerHTML = `
+            <div class="suggestion-header"><div class="suggestion-title">${escapeHtml(s.animeName)}</div><div class="suggestion-meta">${escapeHtml(s.genre)} • ${escapeHtml(s.missionRank)} rank</div></div>
+            <p><strong>Synopsis:</strong> ${escapeHtml(s.synopsis)}</p>
+            <p><strong>Reason:</strong> ${escapeHtml(s.reason)}</p>
+            <p><strong>Suggested by:</strong> ${escapeHtml(s.submittedBy)}</p>
+            <button class="btn-danger" data-del-sug="${s.id}">Delete</button>`;
+          adminSuggestionsList.appendChild(div);
+        });
+        adminSuggestionsList.querySelectorAll('[data-del-sug]').forEach(btn=>btn.addEventListener('click', ()=>deleteSuggestion(btn.getAttribute('data-del-sug'))));
+      }
+
+      function deleteSuggestion(id){
+        if(!confirm('Are you sure you want to delete this suggestion?')) return;
+        try{ run('DELETE FROM suggestions WHERE id = ?', [id]); persist(); loadSuggestions(); loadAdminSuggestions(); showNotification('Suggestion deleted successfully','success'); }catch(err){ console.error(err); showNotification('Error deleting suggestion','error'); }
+      }
+
+      function loadMeetings(){
+        const rows = all('SELECT * FROM meetings ORDER BY date ASC, time ASC');
+        meetingsList.innerHTML = '';
+        if(rows.length===0){ meetingsList.innerHTML = '<p>No meetings scheduled yet.</p>'; return; }
+        rows.forEach(m=>{
+          const div = document.createElement('div');
+          div.className = 'suggestion-item';
+          const formatted = new Date(m.date).toLocaleDateString();
+          div.innerHTML = `
+            <div class="suggestion-header"><div class="suggestion-title">${escapeHtml(m.topic)}</div><div class="suggestion-meta">${formatted} at ${escapeHtml(m.time)}</div></div>
+            <p><strong>Focus:</strong> ${escapeHtml(m.focus)}</p>
+            <p><strong>Duration:</strong> ${escapeHtml(m.duration)} minutes</p>
+            <button class="btn-danger" data-del-meet="${m.id}">Delete</button>`;
+          meetingsList.appendChild(div);
+        });
+        meetingsList.querySelectorAll('[data-del-meet]').forEach(btn=>btn.addEventListener('click', ()=>deleteMeeting(btn.getAttribute('data-del-meet'))));
+      }
+
+      function handleMeetingSubmit(e){
+        e.preventDefault(); if(!currentUser) return;
+        const row = {
+          id: `meeting_${Date.now()}`,
+          date: document.getElementById('meetingDate').value,
+          time: document.getElementById('meetingTime').value,
+          duration: parseInt(document.getElementById('meetingDuration').value, 10),
+          topic: document.getElementById('meetingTopic').value,
+          focus: document.getElementById('meetingFocus').value,
+          createdBy: currentUser.displayName,
+          createdAt: new Date().toISOString()
+        };
+        run('INSERT INTO meetings (id,date,time,duration,topic,focus,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?)', Object.values(row));
+        persist();
+        meetingForm.reset();
+        loadMeetings();
+        showNotification('Meeting scheduled successfully!','success');
+      }
+
+      function deleteMeeting(id){
+        if(!confirm('Are you sure you want to delete this meeting?')) return;
+        try{ run('DELETE FROM meetings WHERE id = ?', [id]); persist(); loadMeetings(); showNotification('Meeting deleted successfully','success'); }catch(err){ console.error(err); showNotification('Error deleting meeting','error'); }
+      }
+
+      function switchTab(name){
+        document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+        document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
+        document.getElementById(`${name}-tab`).classList.add('active');
+      }
+
+      function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
+      function showNotification(message, type){ const n=document.createElement('div'); n.className=`notification ${type}`; n.textContent=message; document.body.appendChild(n); setTimeout(()=>n.remove(),3000); }
+    </script>
+  </body>
+</html>
