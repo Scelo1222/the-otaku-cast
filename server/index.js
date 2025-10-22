@@ -89,8 +89,9 @@ app.post('/api/users', adminOnly, (req, res)=>{
   const u = req.body || {};
   if(!u.id){ u.id = `user_${u.username}`; }
   try{
+    const hashed = bcrypt.hashSync(u.password || '', 10);
     run('INSERT INTO users (id,username,password,role,displayName,avatar) VALUES (?,?,?,?,?,?)', [
-      u.id, u.username, u.password, u.role, u.displayName, u.avatar || (u.displayName||'U').charAt(0).toUpperCase()
+      u.id, u.username, hashed, u.role, u.displayName, u.avatar || (u.displayName||'U').charAt(0).toUpperCase()
     ]);
     broadcast({ type:'db_changed', resource:'users' });
     res.status(201).json({ ok:true, id: u.id });
