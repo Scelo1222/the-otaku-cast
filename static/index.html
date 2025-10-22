@@ -257,34 +257,25 @@
     </div>
 
     <script>
-      // In-browser SQLite using sql.js, persisted in localStorage
+      // Backend API + WebSocket realtime
+      const API_BASE = '';
+      let socket;
+      // Legacy in-browser DB keys (unused in API mode)
       const DB_KEY = 'otaku_cast_sqlite_db';
       let SQL, db;
-      let bc; // BroadcastChannel for realtime sync
+      let bc;
 
       function u8FromB64(b64){ const bin=atob(b64); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); return u8; }
       function b64FromU8(u8){ let bin=''; for(let i=0;i<u8.length;i++) bin += String.fromCharCode(u8[i]); return btoa(bin); }
 
-      async function initDb(){
-        if(!SQL){ SQL = await initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${f}` }); }
-        const saved = localStorage.getItem(DB_KEY);
-        db = saved ? new SQL.Database(u8FromB64(saved)) : new SQL.Database();
-        createSchema();
-        seedDefaults();
-        persist();
-      }
+      async function initDb(){ /* no-op when using backend */ }
 
-      function run(sql, params=[]){ const stmt = db.prepare(sql); stmt.run(params); stmt.free(); }
-      function all(sql, params=[]){ const res = db.exec(sql, params); if(res.length===0) return []; const { columns, values } = res[0]; return values.map(row => Object.fromEntries(row.map((v,i)=>[columns[i], v]))); }
-      function get(sql, params=[]){ const rows = all(sql, params); return rows[0] || null; }
-      function persist(){
-        const data = db.export();
-        localStorage.setItem(DB_KEY, b64FromU8(data));
-        // notify other tabs/windows
-        if(bc){
-          try{ bc.postMessage({ type:'db_changed', at: Date.now() }); }catch{}
-        }
-      }
+      // HTTP helpers
+      async function apiGet(path){ const r = await fetch(API_BASE+path, { credentials:'same-origin' }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+      async function apiPost(path, body){ const r = await fetch(API_BASE+path, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+      async function apiDelete(path){ const r = await fetch(API_BASE+path, { method:'DELETE' }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+
+      function persist(){ /* not needed with backend */ }
 
       function reloadDbFromLocalStorage(){
         const saved = localStorage.getItem(DB_KEY);
@@ -307,84 +298,23 @@
       }
 
       function setupRealtime(){
-        try{ bc = new BroadcastChannel('otaku_cast_db'); }catch{}
-        if(bc){
-          bc.onmessage = (ev)=>{
-            if(ev && ev.data && ev.data.type === 'db_changed'){
-              reloadDbFromLocalStorage();
-              refreshViews();
-            }
+        try{
+          const wsUrl = (location.origin.replace(/^http/,'ws'));
+          socket = new WebSocket(wsUrl);
+          socket.onmessage = (ev)=>{
+            try{
+              const msg = JSON.parse(ev.data);
+              if(msg && msg.type === 'db_changed'){
+                refreshViews();
+              }
+            }catch{}
           };
-        }
-        // Fallback: sync via storage events
-        window.addEventListener('storage', (e)=>{
-          if(e.key === DB_KEY){ reloadDbFromLocalStorage(); refreshViews(); }
-        });
+        }catch(e){ console.warn('WS unavailable', e); }
       }
 
-      function createSchema(){
-        run(`CREATE TABLE IF NOT EXISTS users (
-          id TEXT PRIMARY KEY,
-          username TEXT UNIQUE NOT NULL,
-          password TEXT NOT NULL,
-          role TEXT NOT NULL,
-          displayName TEXT NOT NULL,
-          avatar TEXT NOT NULL
-        );`);
-        run(`CREATE TABLE IF NOT EXISTS members (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          role TEXT NOT NULL,
-          status TEXT NOT NULL
-        );`);
-        run(`CREATE TABLE IF NOT EXISTS suggestions (
-          id TEXT PRIMARY KEY,
-          animeName TEXT NOT NULL,
-          genre TEXT NOT NULL,
-          synopsis TEXT NOT NULL,
-          reason TEXT NOT NULL,
-          missionRank TEXT NOT NULL,
-          submittedBy TEXT NOT NULL,
-          submittedAt TEXT NOT NULL
-        );`);
-        run(`CREATE TABLE IF NOT EXISTS meetings (
-          id TEXT PRIMARY KEY,
-          date TEXT NOT NULL,
-          time TEXT NOT NULL,
-          duration INTEGER NOT NULL,
-          topic TEXT NOT NULL,
-          focus TEXT NOT NULL,
-          createdBy TEXT NOT NULL,
-          createdAt TEXT NOT NULL
-        );`);
-      }
+      function createSchema(){ /* handled by backend */ }
 
-      function seedDefaults(){
-        // Seed only if empty
-        const countUsers = get('SELECT COUNT(*) as c FROM users').c || 0;
-        if(countUsers === 0){
-          run('INSERT INTO users (id,username,password,role,displayName,avatar) VALUES (?,?,?,?,?,?)', ['user_admin','admin','admin123','admin','Constantine','C']);
-          // Make TheWalkingGhost an admin account
-          run('INSERT INTO users (id,username,password,role,displayName,avatar) VALUES (?,?,?,?,?,?)', ['user_twg','thewalkingghost','member123','admin','TheWalkingGhost','T']);
-        }
-
-        const countMembers = get('SELECT COUNT(*) as c FROM members').c || 0;
-        if(countMembers === 0){
-          run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_1','Constantine','Administrator','present']);
-          run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_2','TheWalkingGhost','Administrator','present']);
-          run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_3','Sombra','Member','present']);
-          run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_4','FatalDemon7 (Fatal)','Member','present']);
-          run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_5','M.','Member','absent']);
-          run('INSERT INTO members (id,name,role,status) VALUES (?,?,?,?)', ['member_6','SheWolf','Member','absent']);
-        }
-
-        const countMeet = get('SELECT COUNT(*) as c FROM meetings').c || 0;
-        if(countMeet === 0){
-          run('INSERT INTO meetings (id,date,time,duration,topic,focus,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?)', [
-            'meeting_1','2025-10-11','19:30',60,'Suggestion Box Event','Low-ranking missions initiation','System', new Date().toISOString()
-          ]);
-        }
-      }
+      function seedDefaults(){ /* handled by backend */ }
 
       // Auth and UI
       let currentUser = null;
@@ -425,19 +355,17 @@
         }));
       }
 
-      function handleLogin(e){
+      async function handleLogin(e){
         e.preventDefault();
         const u = document.getElementById('username').value.trim();
         const p = document.getElementById('password').value;
-        const user = get('SELECT * FROM users WHERE username = ?', [u]);
-        if(user && user.password === p){
-          currentUser = { id:user.id, username:user.username, role:user.role, displayName:user.displayName, avatar:user.avatar };
+        try{
+          const user = await apiPost('/api/login', { username: u, password: p });
+          currentUser = user;
           localStorage.setItem('currentUser', JSON.stringify(currentUser));
           showMainPortal();
           showNotification('Login successful!','success');
-        } else {
-          showNotification('Invalid username or password','error');
-        }
+        }catch(err){ showNotification('Invalid username or password','error'); }
       }
 
       function handleLogout(){ currentUser=null; localStorage.removeItem('currentUser'); showLoginScreen(); showNotification('Logged out successfully','success'); }
@@ -449,8 +377,8 @@
         loadMembers(); loadSuggestions(); if(currentUser.role==='admin'){ loadAdminUsers(); loadAdminSuggestions(); loadMeetings(); }
       }
 
-      function loadMembers(){
-        const rows = all('SELECT * FROM members ORDER BY name');
+      async function loadMembers(){
+        const rows = await apiGet('/api/members');
         membersList.innerHTML = '';
         rows.forEach(m=>{
           const div = document.createElement('div');
@@ -461,8 +389,8 @@
         });
       }
 
-      function loadSuggestions(){
-        const rows = all('SELECT * FROM suggestions ORDER BY submittedAt DESC');
+      async function loadSuggestions(){
+        const rows = await apiGet('/api/suggestions');
         suggestionsList.innerHTML = rows.length? '' : '<p>No suggestions yet. Be the first to suggest an anime!</p>';
         rows.forEach(s=>{
           const div = document.createElement('div');
@@ -476,29 +404,27 @@
         });
       }
 
-      function handleSuggestionSubmit(e){
+      async function handleSuggestionSubmit(e){
         e.preventDefault(); if(!currentUser) return;
-        const now = new Date().toISOString();
         const row = {
-          id: `suggestion_${Date.now()}`,
           animeName: document.getElementById('animeName').value.trim(),
           genre: document.getElementById('genre').value,
           synopsis: document.getElementById('synopsis').value.trim(),
           reason: document.getElementById('reason').value.trim(),
           missionRank: document.getElementById('missionRank').value,
-          submittedBy: currentUser.displayName,
-          submittedAt: now
+          submittedBy: currentUser.displayName
         };
-        run('INSERT INTO suggestions (id,animeName,genre,synopsis,reason,missionRank,submittedBy,submittedAt) VALUES (?,?,?,?,?,?,?,?)', Object.values(row));
-        persist();
-        e.target.reset();
-        loadSuggestions();
-        if(currentUser.role==='admin'){ loadAdminSuggestions(); }
-        showNotification('Suggestion submitted successfully!','success');
+        try{
+          await apiPost('/api/suggestions', row);
+          e.target.reset();
+          await loadSuggestions();
+          if(currentUser.role==='admin'){ await loadAdminSuggestions(); }
+          showNotification('Suggestion submitted successfully!','success');
+        }catch(err){ showNotification('Error adding suggestion','error'); }
       }
 
-      function loadAdminUsers(){
-        const rows = all('SELECT * FROM users ORDER BY displayName');
+      async function loadAdminUsers(){
+        const rows = await apiGet('/api/users');
         adminUsersList.innerHTML = '';
         rows.forEach(u=>{
           const card = document.createElement('div');
@@ -513,7 +439,7 @@
         adminUsersList.querySelectorAll('[data-del-user]').forEach(btn=>btn.addEventListener('click', ()=>deleteUser(btn.getAttribute('data-del-user'))));
       }
 
-      function handleAddUser(e){
+      async function handleAddUser(e){
         e.preventDefault();
         const username = document.getElementById('newUsername').value.trim();
         const password = document.getElementById('newPassword').value;
@@ -521,20 +447,18 @@
         const displayName = document.getElementById('newDisplayName').value.trim();
         if(!username || !displayName) return;
         try{
-          run('INSERT INTO users (id,username,password,role,displayName,avatar) VALUES (?,?,?,?,?,?)', [
-            `user_${username}`, username, password, role, displayName, displayName.charAt(0).toUpperCase()
-          ]);
-          persist(); addUserForm.reset(); loadAdminUsers(); showNotification('User added successfully!','success');
+          await apiPost('/api/users', { username, password, role, displayName });
+          addUserForm.reset(); await loadAdminUsers(); showNotification('User added successfully!','success');
         }catch(err){ console.error(err); showNotification('Error adding user','error'); }
       }
 
-      function deleteUser(id){
+      async function deleteUser(id){
         if(!confirm('Are you sure you want to delete this user?')) return;
-        try{ run('DELETE FROM users WHERE id = ?', [id]); persist(); loadAdminUsers(); showNotification('User deleted successfully','success'); }catch(err){ console.error(err); showNotification('Error deleting user','error'); }
+        try{ await apiDelete(`/api/users/${id}`); await loadAdminUsers(); showNotification('User deleted successfully','success'); }catch(err){ console.error(err); showNotification('Error deleting user','error'); }
       }
 
-      function loadAdminSuggestions(){
-        const rows = all('SELECT * FROM suggestions ORDER BY submittedAt DESC');
+      async function loadAdminSuggestions(){
+        const rows = await apiGet('/api/suggestions');
         adminSuggestionsList.innerHTML = '';
         if(rows.length===0){ adminSuggestionsList.innerHTML = '<p>No suggestions yet.</p>'; return; }
         rows.forEach(s=>{
@@ -551,13 +475,13 @@
         adminSuggestionsList.querySelectorAll('[data-del-sug]').forEach(btn=>btn.addEventListener('click', ()=>deleteSuggestion(btn.getAttribute('data-del-sug'))));
       }
 
-      function deleteSuggestion(id){
+      async function deleteSuggestion(id){
         if(!confirm('Are you sure you want to delete this suggestion?')) return;
-        try{ run('DELETE FROM suggestions WHERE id = ?', [id]); persist(); loadSuggestions(); loadAdminSuggestions(); showNotification('Suggestion deleted successfully','success'); }catch(err){ console.error(err); showNotification('Error deleting suggestion','error'); }
+        try{ await apiDelete(`/api/suggestions/${id}`); await loadSuggestions(); await loadAdminSuggestions(); showNotification('Suggestion deleted successfully','success'); }catch(err){ console.error(err); showNotification('Error deleting suggestion','error'); }
       }
 
-      function loadMeetings(){
-        const rows = all('SELECT * FROM meetings ORDER BY date ASC, time ASC');
+      async function loadMeetings(){
+        const rows = await apiGet('/api/meetings');
         meetingsList.innerHTML = '';
         if(rows.length===0){ meetingsList.innerHTML = '<p>No meetings scheduled yet.</p>'; return; }
         rows.forEach(m=>{
@@ -574,28 +498,27 @@
         meetingsList.querySelectorAll('[data-del-meet]').forEach(btn=>btn.addEventListener('click', ()=>deleteMeeting(btn.getAttribute('data-del-meet'))));
       }
 
-      function handleMeetingSubmit(e){
+      async function handleMeetingSubmit(e){
         e.preventDefault(); if(!currentUser) return;
         const row = {
-          id: `meeting_${Date.now()}`,
           date: document.getElementById('meetingDate').value,
           time: document.getElementById('meetingTime').value,
           duration: parseInt(document.getElementById('meetingDuration').value, 10),
           topic: document.getElementById('meetingTopic').value,
           focus: document.getElementById('meetingFocus').value,
-          createdBy: currentUser.displayName,
-          createdAt: new Date().toISOString()
+          createdBy: currentUser.displayName
         };
-        run('INSERT INTO meetings (id,date,time,duration,topic,focus,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?)', Object.values(row));
-        persist();
-        meetingForm.reset();
-        loadMeetings();
-        showNotification('Meeting scheduled successfully!','success');
+        try{
+          await apiPost('/api/meetings', row);
+          meetingForm.reset();
+          await loadMeetings();
+          showNotification('Meeting scheduled successfully!','success');
+        }catch(err){ showNotification('Error scheduling meeting','error'); }
       }
 
-      function deleteMeeting(id){
+      async function deleteMeeting(id){
         if(!confirm('Are you sure you want to delete this meeting?')) return;
-        try{ run('DELETE FROM meetings WHERE id = ?', [id]); persist(); loadMeetings(); showNotification('Meeting deleted successfully','success'); }catch(err){ console.error(err); showNotification('Error deleting meeting','error'); }
+        try{ await apiDelete(`/api/meetings/${id}`); await loadMeetings(); showNotification('Meeting deleted successfully','success'); }catch(err){ console.error(err); showNotification('Error deleting meeting','error'); }
       }
 
       function switchTab(name){
