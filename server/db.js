@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
+import bcrypt from 'bcryptjs';
 
 const dataDir = path.resolve(process.cwd(), 'server', 'data');
 if(!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
@@ -50,10 +51,12 @@ CREATE TABLE IF NOT EXISTS meetings (
 function seed(){
   const countUsers = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
   if(countUsers === 0){
+    const hash1 = bcrypt.hashSync('admin123', 10);
+    const hash2 = bcrypt.hashSync('member123', 10);
     db.prepare('INSERT INTO users (id,username,password,role,displayName,avatar) VALUES (?,?,?,?,?,?)')
-      .run('user_admin','admin','admin123','admin','Constantine','C');
+      .run('user_admin','admin',hash1,'admin','Constantine','C');
     db.prepare('INSERT INTO users (id,username,password,role,displayName,avatar) VALUES (?,?,?,?,?,?)')
-      .run('user_twg','thewalkingghost','member123','admin','TheWalkingGhost','T');
+      .run('user_twg','thewalkingghost',hash2,'admin','TheWalkingGhost','T');
   }
   const countMembers = db.prepare('SELECT COUNT(*) as c FROM members').get().c;
   if(countMembers === 0){
