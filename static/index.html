@@ -260,6 +260,7 @@
       // In-browser SQLite using sql.js, persisted in localStorage
       const DB_KEY = 'otaku_cast_sqlite_db';
       let SQL, db;
+      let bc; // BroadcastChannel for realtime sync
 
       function u8FromB64(b64){ const bin=atob(b64); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); return u8; }
       function b64FromU8(u8){ let bin=''; for(let i=0;i<u8.length;i++) bin += String.fromCharCode(u8[i]); return btoa(bin); }
@@ -276,7 +277,50 @@
       function run(sql, params=[]){ const stmt = db.prepare(sql); stmt.run(params); stmt.free(); }
       function all(sql, params=[]){ const res = db.exec(sql, params); if(res.length===0) return []; const { columns, values } = res[0]; return values.map(row => Object.fromEntries(row.map((v,i)=>[columns[i], v]))); }
       function get(sql, params=[]){ const rows = all(sql, params); return rows[0] || null; }
-      function persist(){ const data = db.export(); localStorage.setItem(DB_KEY, b64FromU8(data)); }
+      function persist(){
+        const data = db.export();
+        localStorage.setItem(DB_KEY, b64FromU8(data));
+        // notify other tabs/windows
+        if(bc){
+          try{ bc.postMessage({ type:'db_changed', at: Date.now() }); }catch{}
+        }
+      }
+
+      function reloadDbFromLocalStorage(){
+        const saved = localStorage.getItem(DB_KEY);
+        if(saved){
+          try{ db = new SQL.Database(u8FromB64(saved)); }catch(e){ console.error('Failed to reload DB from storage', e); }
+        }
+      }
+
+      function refreshViews(){
+        // Refresh UI based on current auth state
+        if(currentUser){
+          loadMembers();
+          loadSuggestions();
+          if(currentUser.role === 'admin'){
+            loadAdminUsers();
+            loadAdminSuggestions();
+            loadMeetings();
+          }
+        }
+      }
+
+      function setupRealtime(){
+        try{ bc = new BroadcastChannel('otaku_cast_db'); }catch{}
+        if(bc){
+          bc.onmessage = (ev)=>{
+            if(ev && ev.data && ev.data.type === 'db_changed'){
+              reloadDbFromLocalStorage();
+              refreshViews();
+            }
+          };
+        }
+        // Fallback: sync via storage events
+        window.addEventListener('storage', (e)=>{
+          if(e.key === DB_KEY){ reloadDbFromLocalStorage(); refreshViews(); }
+        });
+      }
 
       function createSchema(){
         run(`CREATE TABLE IF NOT EXISTS users (
@@ -363,6 +407,7 @@
 
       document.addEventListener('DOMContentLoaded', async () => {
         await initDb();
+        setupRealtime();
         const savedUser = localStorage.getItem('currentUser');
         if(savedUser){ currentUser = JSON.parse(savedUser); showMainPortal(); }
         setupEvents();
